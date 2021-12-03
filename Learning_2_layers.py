@@ -228,24 +228,24 @@ class SimControl(object):
 		filter1_d, filter1_w= final_filters[0][0], final_filters[0][1] 
 		filter2_d, filter2_w= final_filters[1][0], final_filters[1][1] 
 
-		print("Filtre 1 délais:")
+		print("Filtre 0 délais:")
 		for x in filter1_d:
 			for y in x:
 				print("{}, ".format(y*ms), end='')
 			print()
-		print("Filtre 1 poids:")
+		print("Filtre 0 poids:")
 		for x in filter1_w:
 			for y in x:
 				print("{}, ".format(y), end='')
 			print()
 
 		print("\n\n")
-		print("Filtre 2 délais:")
+		print("Filtre 1 délais:")
 		for x in filter2_d:
 			for y in x:
 				print("{}, ".format(y*ms), end='')
 			print()
-		print("Filtre 2 poids:")
+		print("Filtre 1 poids:")
 		for x in filter2_w:
 			for y in x:
 				print("{}, ".format(y), end='')
