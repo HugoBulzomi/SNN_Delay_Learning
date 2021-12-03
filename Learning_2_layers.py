@@ -7,7 +7,6 @@ from random import randint
 import matplotlib.pyplot as plt
 import numpy as np
 import neo
-import ps
 import time
 
 ### SIMULATOR CONFIGURATION ###
