@@ -24,10 +24,10 @@ sim, options = get_simulator(("--plot-figure", "Plot the simulation results to a
                              ("--STDP", "Run network using the STDP implemented in PyNN", {"action": "store_true"}),
                              ("--dendritic-delay-fraction", "What fraction of the total transmission delay is due to dendritic propagation", {"default": 1}),
                              ("--debug", "Print debugging information"),
-                             ("--Rtarget", "Target neural activation rate", {"default": 0.002}),
+                             ("--Rtarget", "Target neural activation rate", {"default": 0.0015}),
                              ("--lambdad", "Homeostasis application rate for delays", {"default": 0.0002}),
                              ("--lambdaw", "Homeostasis application rate for weights", {"default": 0.00003}),
-                             ("--STDPA", "STDP increment/decrement range for weights", {"default": 0.06}))
+                             ("--STDPA", "STDP increment/decrement range for weights", {"default": 0.05}))
 
 if options.debug:
     init_logging(None, debug=True)
@@ -40,7 +40,7 @@ sim.setup(timestep=0.01)
 
 ### INPUT DATA ###
 time_data = 300000
-interval = 100
+interval = 25
 duration = 5
 num = time_data//interval
 # The input should be at least 13*13 for a duration of 5 since we want to leave a marging of 4 neurons on the egdges when generating data
@@ -117,7 +117,7 @@ Input.record("spikes")
 
 Convolutions_parameters = {
     'tau_m': 20.0,      # membrane time constant (in ms)   
-    'tau_refrac': 30.0,  # duration of refractory period (in ms) 0.1 de base
+    'tau_refrac': 10.0,  # duration of refractory period (in ms) 0.1 de base
     'v_reset': -70.0,   # reset potential after a spike (in mV) 
     'v_rest': -70.0,   # resting membrane potential (in mV)
     'v_thresh': -5.0,     # spike threshold (in mV) -5 de base
@@ -150,7 +150,7 @@ convolution4.record(("spikes","v"))
 
 # filters
 weight_N = 0.15
-delays_N = 15.0 
+delays_N = 5.0 
 weight_teta = 0.01
 delays_teta = 0.02 
 
@@ -322,7 +322,7 @@ final_filters = [[], [], [], []]
 neuron_activity_tag = [ [False for cell in range((x_input-filter_x+1)*(y_input-filter_y+1))]for conv in range(len(full_stop_condition)) ]
 
 recorded_input_spikes = []
-recorded_outputs_spikes = [[], [], [], []]
+recorded_outputs_spikes = np.array([[[] for cell in range((x_input-filter_x+1)*(y_input-filter_y+1))], [[] for cell in range((x_input-filter_x+1)*(y_input-filter_y+1))], [[] for cell in range((x_input-filter_x+1)*(y_input-filter_y+1))], [[] for cell in range((x_input-filter_x+1)*(y_input-filter_y+1))]])
 
 ### Run simulation
 """
@@ -432,10 +432,10 @@ class NeuronReset(object):
 			print("!!! RESET !!!")
 			if type(self.populations)==list:
 				for pop in self.populations:
-					pulse = sim.DCSource(amplitude=-10.0, start=t, stop=t+10)
+					pulse = sim.DCSource(amplitude=-10.0, start=t, stop=t+5)
 					pulse.inject_into(pop)
 			else:
-				pulse = sim.DCSource(amplitude=-10.0, start=t, stop=t+10)
+				pulse = sim.DCSource(amplitude=-10.0, start=t, stop=t+5)
 				pulse.inject_into(self.populations)
 
 			self.interval = interval
@@ -457,10 +457,14 @@ class SpikeRecorder(object):
 	def __call__(self, t):
 		global recorded_input_spikes, recorded_outputs_spikes
 		if t > 0:
-			recorded_input_spikes = self.in_pop.get_data("spikes", clear=True).segments[0].spiketrains 
+			recorded_input_spikes = np.array(self.in_pop.get_data("spikes", clear=True).segments[0].spiketrains)
 
-			for pop in range(len(self.out_pops)):
-				recorded_outputs_spikes[pop] = self.out_pops[pop].get_data("spikes", clear=True).segments[0].spiketrains
+			recorded_outputs_spikes = np.array([
+				self.out_pops[0].get_data("spikes", clear=True).segments[0].spiketrains,
+				self.out_pops[1].get_data("spikes", clear=True).segments[0].spiketrains,
+				self.out_pops[2].get_data("spikes", clear=True).segments[0].spiketrains,
+				self.out_pops[3].get_data("spikes", clear=True).segments[0].spiketrains
+			  ])
 
 			self.interval = interval
 		return t + self.interval
@@ -491,7 +495,7 @@ class LearningMecanisms(object):
 		self.growth_factor = growth_factor
 		self.label = label
 		self.thresh_adapt=thresh_adapt
-		self.total_spike_count_per_neuron = [np.array([Rtarget for s in range(20)]) for cell in range(len(self.output))] # For each neuron, we count their number of spikes to compute their activation rate.
+		self.total_spike_count_per_neuron = [np.array([Rtarget for s in range(10)]) for cell in range(len(self.output))] # For each neuron, we count their number of spikes to compute their activation rate.
 		self.call_count = 0 # Number of times this has been called.
 		self.Rtarget = Rtarget
 		self.lamdaw = lamdaw 
@@ -522,13 +526,6 @@ class LearningMecanisms(object):
 				for y in x:
 					if not np.isnan(y) and y > self.max_delay:
 						self.max_delay = y
-		'''
-		for pre_neuron in range(len(input_spike_train)):
-			if len(input_spike_train[pre_neuron]) > 0 and input_spike_train[pre_neuron][-1] > self.input_last_spiking_times[pre_neuron]:
-				# We actualize the last time of spike for this neuron
-				self.input_last_spiking_times[pre_neuron] = input_spike_train[pre_neuron][-1]
-				print("PRE SPIKE {} : {}".format(pre_neuron, input_spike_train[pre_neuron][-1]))
-		'''
 
 		for post_neuron in range(len(output_spike_train)):
 
@@ -640,14 +637,12 @@ class LearningMecanisms(object):
 		self.filter_d[filter_coords[0]][filter_coords[1]] = max(0.01, min(self.filter_d[filter_coords[0]][filter_coords[1]]+delta_d, self.max_delay))
 		self.filter_w[filter_coords[0]][filter_coords[1]] = max(0.05, min(self.filter_w[filter_coords[0]][filter_coords[1]]+delta_w, 1.0))
 
-		# Finally we actualize the weghts and delays of all neurons that use the same filter
-		for window_x in range(0, x_input - (filter_x-1)):
-			for window_y in range(0, y_input - (filter_y-1)):
-				input_neuron_id = window_x+filter_coords[0] + (window_y+filter_coords[1])*x_input
-				convo_neuron_id = window_x + window_y*(x_input-filter_x+1)
-				if not np.isnan(delays[input_neuron_id][convo_neuron_id]) and not np.isnan(weights[input_neuron_id][convo_neuron_id]):
-					delays[input_neuron_id][convo_neuron_id] = self.filter_d[filter_coords[0]][filter_coords[1]]
-					weights[input_neuron_id][convo_neuron_id] = self.filter_w[filter_coords[0]][filter_coords[1]]
+		coord_conv = self.get_convolution_window(post_neuron)
+		diff = pre_neuron-coord_conv
+		for post in range(len(self.output)):
+			#print("PRE:{}, POST:{}".format( self.get_convolution_window(post)+diff, post))
+			delays[self.get_convolution_window(post)+diff][post] = min(self.max_delay, max(0.01, delays[self.get_convolution_window(post)+diff][post]+delta_d))
+			weights[self.get_convolution_window(post)+diff][post] = max(0.05, weights[self.get_convolution_window(post)+diff][post])
 
 	# Applies delta_d and delta_w to the whole filter 
 	def actualize_All_Filter(self, delta_d, delta_w, delays, weights):
@@ -657,16 +652,12 @@ class LearningMecanisms(object):
 				self.filter_d[x][y] = max(0.01, min(self.filter_d[x][y]+delta_d, self.max_delay))
 				self.filter_w[x][y] = max(0.05, min(self.filter_w[x][y]+delta_w, 1.0))
 
-		# Finally we actualize the weights and delays of all neurons that use the same filter
-		for window_x in range(0, x_input - (filter_x-1)):
-			for window_y in range(0, y_input - (filter_y-1)):
-				for x in range(len(self.filter_d)):
-					for y in range(len(self.filter_d[x])):
-						input_neuron_id = window_x+x + (window_y+y)*x_input
-						convo_neuron_id = window_x + window_y*(x_input-filter_x+1)
-						if not np.isnan(delays[input_neuron_id][convo_neuron_id]) and not np.isnan(weights[input_neuron_id][convo_neuron_id]):
-							delays[input_neuron_id][convo_neuron_id] = self.filter_d[x][y]
-							weights[input_neuron_id][convo_neuron_id] = self.filter_w[x][y]
+		delays = np.where(delays < self.max_delay-delta_d, delays+delta_d, delays)
+		delays = np.where(delays > 0.01, delays, 0.015)
+		weights = np.where(weights>0.05-delta_w, weights+delta_w, weights)
+
+	def get_convolution_window(self, post_neuron):
+		return post_neuron//(x_input-filter_x+1)*x_input + post_neuron%(x_input-filter_x+1)
 
 	def get_filters(self):
 		return self.filter_d, self.filter_w
@@ -685,15 +676,15 @@ class LearningMecanisms(object):
 
 
 growth_factor = 0.0001 # <- juste faire *duration dans STDP We increase each delay by this constant each step
-c = 0.5 # Stop Condition 1.0
+c = 0.3 # Stop Condition 1.0
 A_plus = float(options.STDPA)#0.05 # A is for weight STDP 0.05 is fine
 A_minus = float(options.STDPA)
 '''
 B_plus = 0.5 # B is for delay STDP 5.0 is fine
 B_minus = 0.5
 '''
-B_plus = 5.5 # B is for delay STDP 5.0 is fine
-B_minus = 5.5
+B_plus = 1.0 # B is for delay STDP 5.0 is fine
+B_minus = 1.0
 teta_plus= 1.0 # tetas are for delay STDP
 teta_minus= 1.0
 tau_plus= 1.0 # tau are for weights STDP
@@ -720,7 +711,7 @@ STDP_sampling = interval
 '''
 
 
-neuron_reset = NeuronReset(sampling_interval=interval-15, pops=[convolution1, convolution2, convolution3, convolution4])
+neuron_reset = NeuronReset(sampling_interval=interval-5, pops=[convolution1, convolution2, convolution3, convolution4])
 Recorder = SpikeRecorder(sampling_interval=interval-1, input_pop = Input, output_pops = [convolution1, convolution2, convolution3, convolution4])
 #Test = TestClass(sampling_interval=1.0, pop=convolution1)
 
