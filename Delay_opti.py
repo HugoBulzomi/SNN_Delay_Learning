@@ -25,9 +25,9 @@ sim, options = get_simulator(("--plot-figure", "Plot the simulation results to a
                              ("--dendritic-delay-fraction", "What fraction of the total transmission delay is due to dendritic propagation", {"default": 1}),
                              ("--debug", "Print debugging information"),
                              ("--Rtarget", "Target neural activation rate", {"default": 0.0015}),
-                             ("--lambdad", "Homeostasis application rate for delays", {"default": 0.0002}),
-                             ("--lambdaw", "Homeostasis application rate for weights", {"default": 0.00003}),
-                             ("--STDPA", "STDP increment/decrement range for weights", {"default": 0.05}))
+                             ("--lambdad", "Homeostasis application rate for delays", {"default": 0.002}),
+                             ("--lambdaw", "Homeostasis application rate for weights", {"default": 0.00002}),
+                             ("--STDPA", "STDP increment/decrement range for weights", {"default": 0.015}))
 
 if options.debug:
     init_logging(None, debug=True)
@@ -40,7 +40,7 @@ sim.setup(timestep=0.01)
 
 ### INPUT DATA ###
 time_data = 300000
-interval = 25
+interval = 100
 duration = 5
 num = time_data//interval
 # The input should be at least 13*13 for a duration of 5 since we want to leave a marging of 4 neurons on the egdges when generating data
@@ -116,7 +116,7 @@ Input = sim.Population(
 Input.record("spikes") 
 
 Convolutions_parameters = {
-    'tau_m': 20.0,      # membrane time constant (in ms)   
+    'tau_m': 15.0,      # membrane time constant (in ms)   
     'tau_refrac': 10.0,  # duration of refractory period (in ms) 0.1 de base
     'v_reset': -70.0,   # reset potential after a spike (in mV) 
     'v_rest': -70.0,   # resting membrane potential (in mV)
@@ -149,8 +149,8 @@ convolution4.record(("spikes","v"))
 
 
 # filters
-weight_N = 0.15
-delays_N = 5.0 
+weight_N = 0.2
+delays_N = 15.0 
 weight_teta = 0.01
 delays_teta = 0.02 
 
@@ -223,6 +223,7 @@ input2convolution4 = sim.Projection(
 
 # Latheral Inhibition (WTA)
 latheral_w = 50.0
+latheral_connector = sim.OneToOneConnector()
 latheralInhibition1_2 = sim.Projection(
   convolution1, convolution2,
   connector = sim.OneToOneConnector(),
@@ -232,14 +233,14 @@ latheralInhibition1_2 = sim.Projection(
 )
 latheralInhibition1_3 = sim.Projection(
   convolution1, convolution3,
-  connector = sim.OneToOneConnector(),
+  connector = sim.latheral_connector,
   synapse_type=sim.StaticSynapse(weight=latheral_w, delay=0.01), 
   receptor_type="inhibitory",
   label="Latheral inhibition between convolutional layers 1 and 3"
 )
 latheralInhibition1_4 = sim.Projection(
   convolution1, convolution4,
-  connector = sim.OneToOneConnector(),
+  connector = latheral_connector,
   synapse_type=sim.StaticSynapse(weight=latheral_w, delay=0.01), 
   receptor_type="inhibitory",
   label="Latheral inhibition between convolutional layers 1 and 4"
@@ -247,21 +248,21 @@ latheralInhibition1_4 = sim.Projection(
 
 latheralInhibition2_1 = sim.Projection(
   convolution2, convolution1,
-  connector = sim.OneToOneConnector(),
+  connector = latheral_connector,
   synapse_type=sim.StaticSynapse(weight=latheral_w, delay=0.01), 
   receptor_type="inhibitory",
   label="Latheral inhibition between convolutional layers 2 and 1"
 )
 latheralInhibition2_3 = sim.Projection(
   convolution2, convolution3,
-  connector = sim.OneToOneConnector(),
+  connector = latheral_connector,
   synapse_type=sim.StaticSynapse(weight=latheral_w, delay=0.01), 
   receptor_type="inhibitory",
   label="Latheral inhibition between convolutional layers 2 and 3"
 )
 latheralInhibition2_4 = sim.Projection(
   convolution2, convolution4,
-  connector = sim.OneToOneConnector(),
+  connector = latheral_connector,
   synapse_type=sim.StaticSynapse(weight=latheral_w, delay=0.01), 
   receptor_type="inhibitory",
   label="Latheral inhibition between convolutional layers 2 and 4"
@@ -269,21 +270,21 @@ latheralInhibition2_4 = sim.Projection(
 
 latheralInhibition3_1 = sim.Projection(
   convolution3, convolution1,
-  connector = sim.OneToOneConnector(),
+  connector = latheral_connector,
   synapse_type=sim.StaticSynapse(weight=latheral_w, delay=0.01), 
   receptor_type="inhibitory",
   label="Latheral inhibition between convolutional layers 3 and 1"
 )
 latheralInhibition3_2 = sim.Projection(
   convolution3, convolution2,
-  connector = sim.OneToOneConnector(),
+  connector = latheral_connector,
   synapse_type=sim.StaticSynapse(weight=latheral_w, delay=0.01), 
   receptor_type="inhibitory",
   label="Latheral inhibition between convolutional layers 3 and 2"
 )
 latheralInhibition3_4 = sim.Projection(
   convolution3, convolution4,
-  connector = sim.OneToOneConnector(),
+  connector = latheral_connector,
   synapse_type=sim.StaticSynapse(weight=latheral_w, delay=0.01), 
   receptor_type="inhibitory",
   label="Latheral inhibition between convolutional layers 3 and 4"
@@ -291,21 +292,21 @@ latheralInhibition3_4 = sim.Projection(
 
 latheralInhibition4_1 = sim.Projection(
   convolution4, convolution1,
-  connector = sim.OneToOneConnector(),
+  connector = latheral_connector,
   synapse_type=sim.StaticSynapse(weight=latheral_w, delay=0.01), 
   receptor_type="inhibitory",
   label="Latheral inhibition between convolutional layers 4 and 1"
 )
 latheralInhibition4_2 = sim.Projection(
   convolution4, convolution2,
-  connector = sim.OneToOneConnector(),
+  connector = latheral_connector,
   synapse_type=sim.StaticSynapse(weight=latheral_w, delay=0.01), 
   receptor_type="inhibitory",
   label="Latheral inhibition between convolutional layers 4 and 2"
 )
 latheralInhibition4_3 = sim.Projection(
   convolution4, convolution3,
-  connector = sim.OneToOneConnector(),
+  connector = latheral_connector,
   synapse_type=sim.StaticSynapse(weight=latheral_w, delay=0.01), 
   receptor_type="inhibitory",
   label="Latheral inhibition between convolutional layers 4 and 3"
@@ -353,6 +354,7 @@ class SimControl(object):
 				exit()
 			if t>1 and int(t)%interval==0:
 				self.print_final_filters()
+				self.save_filters()
 
 		return t + self.interval
 
@@ -409,6 +411,20 @@ class SimControl(object):
 			for y in x:
 				print("{}, ".format(y), end='')
 			print()
+
+	def save_filters(self):
+		with open("saved_filters.json", 'w') as f:
+			dic = {
+				"filter0_w":filter1_w.tolist(),
+				"filter1_w":filter2_w.tolist(),
+				"filter2_w":filter3_w.tolist(),
+				"filter3_w":filter4_w.tolist(),
+				"filter0_d":filter1_d.tolist(),
+				"filter1_d":filter2_d.tolist(),
+				"filter2_d":filter3_d.tolist(),
+				"filter3_d":filter4_d.tolist()
+			}
+			json.dump(dic, f)
 
 
 
@@ -578,6 +594,7 @@ class LearningMecanisms(object):
 			# Homeostasis regulation per neuron
 			Robserved = self.total_spike_count_per_neuron[post_neuron].sum()/len(self.total_spike_count_per_neuron[post_neuron])
 			K = (self.Rtarget - Robserved)/self.Rtarget
+			#print("convo {} R: {}".format( self.label, Robserved))
 			delta_d = -self.lamdad*K
 			delta_w = self.lamdaw*K
 			homeo_delays_total += delta_d  
@@ -586,8 +603,7 @@ class LearningMecanisms(object):
 
 
 		print("****** CONVO {} homeo_delays_total: {}, homeo_weights_total: {}".format(self.label, homeo_delays_total, homeo_weights_total))
-		self.actualize_All_Filter( homeo_delays_total+self.growth_factor*duration, homeo_weights_total, delays, weights)
-
+		delays, weights = self.actualize_All_Filter( homeo_delays_total+self.growth_factor*duration, homeo_weights_total, delays, weights)
 		# At last we give the new delays and weights to our projections
 		self.projection.set(delay = delays)
 		self.projection.set(weight = weights)
@@ -646,15 +662,37 @@ class LearningMecanisms(object):
 
 	# Applies delta_d and delta_w to the whole filter 
 	def actualize_All_Filter(self, delta_d, delta_w, delays, weights):
+		'''
+		for x in range(len(self.filter_d)):
+			for y in range(len(self.filter_d[x])):
+				self.filter_d[x][y] = max(0.01, min(self.filter_d[x][y]+delta_d, self.max_delay))
+				self.filter_w[x][y] = max(0.05, min(self.filter_w[x][y]+delta_w, 1.0))
+
+		# Finally we actualize the weights and delays of all neurons that use the same filter
+		for window_x in range(0, x_input - (filter_x-1)):
+			for window_y in range(0, y_input - (filter_y-1)):
+				for x in range(len(self.filter_d)):
+					for y in range(len(self.filter_d[x])):
+						input_neuron_id = window_x+x + (window_y+y)*x_input
+						convo_neuron_id = window_x + window_y*(x_input-filter_x+1)
+						if not np.isnan(delays[input_neuron_id][convo_neuron_id]) and not np.isnan(weights[input_neuron_id][convo_neuron_id]):
+							delays[input_neuron_id][convo_neuron_id] = self.filter_d[x][y]
+							weights[input_neuron_id][convo_neuron_id] = self.filter_w[x][y]
+		'''
+
 
 		for x in range(len(self.filter_d)):
 			for y in range(len(self.filter_d[x])):
 				self.filter_d[x][y] = max(0.01, min(self.filter_d[x][y]+delta_d, self.max_delay))
 				self.filter_w[x][y] = max(0.05, min(self.filter_w[x][y]+delta_w, 1.0))
 
-		delays = np.where(delays < self.max_delay-delta_d, delays+delta_d, delays)
-		delays = np.where(delays > 0.01, delays, 0.015)
-		weights = np.where(weights>0.05-delta_w, weights+delta_w, weights)
+		delays = np.where(np.logical_not(delays) & (delays < self.max_delay-delta_d) & (delays > 0.01), delays+delta_d, delays)
+		#delays = np.where(delays > 0.01, delays, 0.015)
+
+		weights = np.where(np.logical_not(np.isnan(weights)) & (weights>0.05-delta_w), weights+delta_w, weights)
+
+		return delays.copy(), weights.copy()
+
 
 	def get_convolution_window(self, post_neuron):
 		return post_neuron//(x_input-filter_x+1)*x_input + post_neuron%(x_input-filter_x+1)
@@ -683,8 +721,8 @@ A_minus = float(options.STDPA)
 B_plus = 0.5 # B is for delay STDP 5.0 is fine
 B_minus = 0.5
 '''
-B_plus = 1.0 # B is for delay STDP 5.0 is fine
-B_minus = 1.0
+B_plus = 1.5 # B is for delay STDP 5.0 is fine
+B_minus = 1.5
 teta_plus= 1.0 # tetas are for delay STDP
 teta_minus= 1.0
 tau_plus= 1.0 # tau are for weights STDP
