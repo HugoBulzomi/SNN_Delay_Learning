@@ -25,10 +25,10 @@ sim, options = get_simulator(("--plot-figure", "Plot the simulation results to a
                              ("--STDP", "Run network using the STDP implemented in PyNN", {"action": "store_true"}),
                              ("--dendritic-delay-fraction", "What fraction of the total transmission delay is due to dendritic propagation", {"default": 1}),
                              ("--debug", "Print debugging information"),
-                             ("--Rtarget", "Target neural activation rate", {"default": 0.003}),
+                             ("--Rtarget", "Target neural activation rate", {"default": 0.0025}),
                              ("--lambdad", "Homeostasis application rate for delays", {"default": 0.0001}),
                              ("--lambdaw", "Homeostasis application rate for weights", {"default": 0.00002}),
-                             ("--STDPA", "STDP increment/decrement range for weights", {"default": 0.02 }),
+                             ("--STDPA", "STDP increment/decrement range for weights", {"default": 0.03 }),
                              ("--STDPB", "STDP increment/decrement range for weights", {"default": 1.0}))
 
 if options.debug:
@@ -562,8 +562,8 @@ class LearningMecanisms(object):
 					thresh = current_rest = self.output.__getitem__(post_neuron).get_parameters()['v_thresh']
 					self.output.__getitem__(post_neuron).v_rest=min(current_rest-(1.0-self.Rtarget), thresh-1)
 					self.output.__getitem__(post_neuron).v_reset=min(current_rest-(1.0-self.Rtarget), thresh-1)
-				print("=== Neuron {} from layer {} spiked ! Whith rest = {} ===".format(post_neuron, self.label, current_rest))
-				#print("Total pikes of neuron {} from layer {} : {}".format(post_neuron, self.label, self.total_spike_count_per_neuron[post_neuron]))
+				print("=== Neuron {} from layer {} spiked ! ===".format(post_neuron, self.label))
+				
 
 				if not self.stop_condition(delays, post_neuron):
 					# We actualize the last time of spike for this neuron
@@ -586,12 +586,9 @@ class LearningMecanisms(object):
 							input_coords = [pre_neuron%x_input, pre_neuron//x_input]
 							filter_coords = [input_coords[0]-convo_coords[0], input_coords[1]-convo_coords[1]]
 
-							print("STDP from layer: {} with post_neuron: {} and pre_neuron: {} deltad: {}, deltat: {}".format(self.label, post_neuron, pre_neuron, delta_d*ms, delta_t*ms))
-							#print("TIME PRE {} : {} TIME POST 0: {} DELAY: {} WEIGHT: {} FILTER_D: {} FILTER_W: {} delta_d: {} delta_w: {}".format(pre_neuron, input_spike_train[pre_neuron][-1]/ms, output_spike_train[post_neuron][-1]/ms, delays[pre_neuron][post_neuron], weights[pre_neuron][post_neuron], self.filter_d[filter_coords[0]][filter_coords[1]], self.filter_w[filter_coords[0]][filter_coords[1]], delta_d, delta_w))
-							#print("AVANT FILTER_D00: {}, FILTER_W00: {}, DELAYS00: {}, WEIGHTS: {}".format( self.filter_d[0][0], self.filter_w[0][0], delays[0][0], weights[0][0]))
+							#print("STDP from layer: {} with post_neuron: {} and pre_neuron: {} deltad: {}, deltat: {}".format(self.label, post_neuron, pre_neuron, delta_d*ms, delta_t*ms))
 							self.actualize_filter(pre_neuron, post_neuron, delta_d, delta_w, delays, weights)
-							#print("TIME PRE {} : {} TIME POST 0: {} DELAY: {} WEIGHT: {} FILTER_D: {} FILTER_W: {} delta_d: {} delta_w: {}".format(pre_neuron, input_spike_train[pre_neuron][-1]/ms, output_spike_train[post_neuron][-1]/ms, delays[pre_neuron][post_neuron], weights[pre_neuron][post_neuron], self.filter_d[filter_coords[0]][filter_coords[1]], self.filter_w[filter_coords[0]][filter_coords[1]], delta_d, delta_w))
-							#print("APRES FILTER_D00: {}, FILTER_W00: {}, DELAYS00: {}, WEIGHTS: {}".format( self.filter_d[0][0], self.filter_w[0][0], delays[0][0], weights[0][0]))
+
 			else:
 				# The neuron did not spike and its threshold should be lowered
 
@@ -609,13 +606,11 @@ class LearningMecanisms(object):
 			delta_w = self.lamdaw*K
 			homeo_delays_total += delta_d  
 			homeo_weights_total += delta_w 
-			#print("Rate of neuron {} from layer {}: {}".format(post_neuron, self.label, Robserved))
-
 
 		print("****** CONVO {} homeo_delays_total: {}, homeo_weights_total: {}".format(self.label, homeo_delays_total, homeo_weights_total))
-		#print("DELAY: {} WEIGHT: {} FILTER_D: {} FILTER_W: {} delta_d: {} delta_w: {}".format( delays[0][0], weights[0][0], self.filter_d[0][0], self.filter_w[0][0], homeo_delays_total+self.growth_factor*duration, homeo_weights_total))
+		
 		delays, weights = self.actualize_All_Filter( homeo_delays_total+self.growth_factor*duration, homeo_weights_total, delays, weights)
-		#print("DELAY: {} WEIGHT: {} FILTER_D: {} FILTER_W: {} delta_d: {} delta_w: {}".format( delays[0][0], weights[0][0], self.filter_d[0][0], self.filter_w[0][0], homeo_delays_total+self.growth_factor*duration, homeo_weights_total))
+		
 		# At last we give the new delays and weights to our projections
 		self.projection.set(delay = delays)
 		self.projection.set(weight = weights)
@@ -657,13 +652,10 @@ class LearningMecanisms(object):
 	# Applies the current weights and delays of the filter to all the cells sharing those
 	def actualize_filter(self, pre_neuron, post_neuron, delta_d, delta_w, delays, weights):
 
-
 		# We now find the delay/weight to use by looking at the filter
 		convo_coords = [post_neuron%(x_input-filter_x+1), post_neuron//(x_input-filter_x+1)]
 		input_coords = [pre_neuron%x_input, pre_neuron//x_input]
 		filter_coords = [input_coords[0]-convo_coords[0], input_coords[1]-convo_coords[1]]
-
-		print("BEFORE FILTERD: {} DELAYS: {}".format(self.filter_d[filter_coords[0]][filter_coords[1]], delays[pre_neuron][post_neuron]))
 
 		# And we actualize delay/weight of the filter after the STDP
 		self.filter_d[filter_coords[0]][filter_coords[1]] = max(0.01, min(self.filter_d[filter_coords[0]][filter_coords[1]]+delta_d, self.max_delay))
@@ -672,42 +664,19 @@ class LearningMecanisms(object):
 		coord_conv = self.get_convolution_window(post_neuron)
 		diff = pre_neuron-coord_conv
 		for post in range(len(self.output)):
-			#print("PRE:{}, POST:{}".format( self.get_convolution_window(post)+diff, post))
-			delays[self.get_convolution_window(post)+diff][post] = min(self.max_delay, max(0.01, delays[self.get_convolution_window(post)+diff][post]+delta_d))
+			delays[self.get_convolution_window(post)+diff][post] = max(0.01, min(delays[self.get_convolution_window(post)+diff][post]+delta_d, self.max_delay))
 			weights[self.get_convolution_window(post)+diff][post] = max(0.01, weights[self.get_convolution_window(post)+diff][post]+delta_w)
 
-		print("AFTER FILTERD: {} DELAYS: {}".format(self.filter_d[filter_coords[0]][filter_coords[1]], delays[pre_neuron][post_neuron]))
 
-	# Applies delta_d and delta_w to the whole filter 
+	# Applies delta_d and delta_w to the whole filter
 	def actualize_All_Filter(self, delta_d, delta_w, delays, weights):
-		'''
-		for x in range(len(self.filter_d)):
-			for y in range(len(self.filter_d[x])):
-				self.filter_d[x][y] = max(0.01, min(self.filter_d[x][y]+delta_d, self.max_delay))
-				self.filter_w[x][y] = max(0.05, min(self.filter_w[x][y]+delta_w, 1.0))
 
-		# Finally we actualize the weights and delays of all neurons that use the same filter
-		for window_x in range(0, x_input - (filter_x-1)):
-			for window_y in range(0, y_input - (filter_y-1)):
-				for x in range(len(self.filter_d)):
-					for y in range(len(self.filter_d[x])):
-						input_neuron_id = window_x+x + (window_y+y)*x_input
-						convo_neuron_id = window_x + window_y*(x_input-filter_x+1)
-						if not np.isnan(delays[input_neuron_id][convo_neuron_id]) and not np.isnan(weights[input_neuron_id][convo_neuron_id]):
-							delays[input_neuron_id][convo_neuron_id] = self.filter_d[x][y]
-							weights[input_neuron_id][convo_neuron_id] = self.filter_w[x][y]
-		'''
+		self.filter_d = np.where((self.filter_d+delta_d < self.max_delay) & (self.filter_d > 0.01), self.filter_d+delta_d, self.filter_d)
+		self.filter_w = np.where( self.filter_w + delta_w > 0.01, self.filter_w+delta_w, self.filter_w)
 
+		delays = np.where(np.logical_not(np.isnan(delays)) & (delays + delta_d < self.max_delay) & (delays > 0.01), delays+delta_d, delays)
 
-		for x in range(len(self.filter_d)):
-			for y in range(len(self.filter_d[x])):
-				self.filter_d[x][y] = max(0.01, min(self.filter_d[x][y]+delta_d, self.max_delay))
-				self.filter_w[x][y] = max(0.01, self.filter_w[x][y]+delta_w)
-
-		delays = np.where(np.logical_not(np.isnan(delays)) & (delays < self.max_delay-delta_d) & (delays > 0.01), delays+delta_d, delays)
-		#delays = np.where(delays > 0.01, delays, 0.015)
-
-		weights = np.where(np.logical_not(np.isnan(weights)) & (weights>0.01-delta_w), weights+delta_w, weights)
+		weights = np.where(np.logical_not(np.isnan(weights)) & (weights + delta_w>0.01), weights+delta_w, weights)
 
 		return delays.copy(), weights.copy()
 
