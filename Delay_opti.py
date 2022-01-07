@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import neo
 import time
+import json
 
 ### SIMULATOR CONFIGURATION ###
 '''
@@ -24,10 +25,11 @@ sim, options = get_simulator(("--plot-figure", "Plot the simulation results to a
                              ("--STDP", "Run network using the STDP implemented in PyNN", {"action": "store_true"}),
                              ("--dendritic-delay-fraction", "What fraction of the total transmission delay is due to dendritic propagation", {"default": 1}),
                              ("--debug", "Print debugging information"),
-                             ("--Rtarget", "Target neural activation rate", {"default": 0.0015}),
-                             ("--lambdad", "Homeostasis application rate for delays", {"default": 0.002}),
+                             ("--Rtarget", "Target neural activation rate", {"default": 0.003}),
+                             ("--lambdad", "Homeostasis application rate for delays", {"default": 0.0001}),
                              ("--lambdaw", "Homeostasis application rate for weights", {"default": 0.00002}),
-                             ("--STDPA", "STDP increment/decrement range for weights", {"default": 0.015}))
+                             ("--STDPA", "STDP increment/decrement range for weights", {"default": 0.02 }),
+                             ("--STDPB", "STDP increment/decrement range for weights", {"default": 1.0}))
 
 if options.debug:
     init_logging(None, debug=True)
@@ -116,7 +118,7 @@ Input = sim.Population(
 Input.record("spikes") 
 
 Convolutions_parameters = {
-    'tau_m': 15.0,      # membrane time constant (in ms)   
+    'tau_m': 20.0,      # membrane time constant (in ms)   
     'tau_refrac': 10.0,  # duration of refractory period (in ms) 0.1 de base
     'v_reset': -70.0,   # reset potential after a spike (in mV) 
     'v_rest': -70.0,   # resting membrane potential (in mV)
@@ -226,14 +228,14 @@ latheral_w = 50.0
 latheral_connector = sim.OneToOneConnector()
 latheralInhibition1_2 = sim.Projection(
   convolution1, convolution2,
-  connector = sim.OneToOneConnector(),
+  connector = latheral_connector,
   synapse_type=sim.StaticSynapse(weight=latheral_w, delay=0.01), 
   receptor_type="inhibitory",
   label="Latheral inhibition between convolutional layers 1 and 2"
 )
 latheralInhibition1_3 = sim.Projection(
   convolution1, convolution3,
-  connector = sim.latheral_connector,
+  connector = latheral_connector,
   synapse_type=sim.StaticSynapse(weight=latheral_w, delay=0.01), 
   receptor_type="inhibitory",
   label="Latheral inhibition between convolutional layers 1 and 3"
@@ -579,9 +581,17 @@ class LearningMecanisms(object):
 							delta_d = self.G(delta_t)
 							delta_w = self.F(delta_t)
 
+
+							convo_coords = [post_neuron%(x_input-filter_x+1), post_neuron//(x_input-filter_x+1)]
+							input_coords = [pre_neuron%x_input, pre_neuron//x_input]
+							filter_coords = [input_coords[0]-convo_coords[0], input_coords[1]-convo_coords[1]]
+
 							print("STDP from layer: {} with post_neuron: {} and pre_neuron: {} deltad: {}, deltat: {}".format(self.label, post_neuron, pre_neuron, delta_d*ms, delta_t*ms))
-							print("TIME PRE {} : {} TIME POST 0: {} DELAY: {}".format(pre_neuron, input_spike_train[pre_neuron][-1]/ms, output_spike_train[post_neuron][-1]/ms, delays[pre_neuron][post_neuron]))
+							#print("TIME PRE {} : {} TIME POST 0: {} DELAY: {} WEIGHT: {} FILTER_D: {} FILTER_W: {} delta_d: {} delta_w: {}".format(pre_neuron, input_spike_train[pre_neuron][-1]/ms, output_spike_train[post_neuron][-1]/ms, delays[pre_neuron][post_neuron], weights[pre_neuron][post_neuron], self.filter_d[filter_coords[0]][filter_coords[1]], self.filter_w[filter_coords[0]][filter_coords[1]], delta_d, delta_w))
+							#print("AVANT FILTER_D00: {}, FILTER_W00: {}, DELAYS00: {}, WEIGHTS: {}".format( self.filter_d[0][0], self.filter_w[0][0], delays[0][0], weights[0][0]))
 							self.actualize_filter(pre_neuron, post_neuron, delta_d, delta_w, delays, weights)
+							#print("TIME PRE {} : {} TIME POST 0: {} DELAY: {} WEIGHT: {} FILTER_D: {} FILTER_W: {} delta_d: {} delta_w: {}".format(pre_neuron, input_spike_train[pre_neuron][-1]/ms, output_spike_train[post_neuron][-1]/ms, delays[pre_neuron][post_neuron], weights[pre_neuron][post_neuron], self.filter_d[filter_coords[0]][filter_coords[1]], self.filter_w[filter_coords[0]][filter_coords[1]], delta_d, delta_w))
+							#print("APRES FILTER_D00: {}, FILTER_W00: {}, DELAYS00: {}, WEIGHTS: {}".format( self.filter_d[0][0], self.filter_w[0][0], delays[0][0], weights[0][0]))
 			else:
 				# The neuron did not spike and its threshold should be lowered
 
@@ -603,7 +613,9 @@ class LearningMecanisms(object):
 
 
 		print("****** CONVO {} homeo_delays_total: {}, homeo_weights_total: {}".format(self.label, homeo_delays_total, homeo_weights_total))
+		#print("DELAY: {} WEIGHT: {} FILTER_D: {} FILTER_W: {} delta_d: {} delta_w: {}".format( delays[0][0], weights[0][0], self.filter_d[0][0], self.filter_w[0][0], homeo_delays_total+self.growth_factor*duration, homeo_weights_total))
 		delays, weights = self.actualize_All_Filter( homeo_delays_total+self.growth_factor*duration, homeo_weights_total, delays, weights)
+		#print("DELAY: {} WEIGHT: {} FILTER_D: {} FILTER_W: {} delta_d: {} delta_w: {}".format( delays[0][0], weights[0][0], self.filter_d[0][0], self.filter_w[0][0], homeo_delays_total+self.growth_factor*duration, homeo_weights_total))
 		# At last we give the new delays and weights to our projections
 		self.projection.set(delay = delays)
 		self.projection.set(weight = weights)
@@ -644,21 +656,27 @@ class LearningMecanisms(object):
 
 	# Applies the current weights and delays of the filter to all the cells sharing those
 	def actualize_filter(self, pre_neuron, post_neuron, delta_d, delta_w, delays, weights):
+
+
 		# We now find the delay/weight to use by looking at the filter
 		convo_coords = [post_neuron%(x_input-filter_x+1), post_neuron//(x_input-filter_x+1)]
 		input_coords = [pre_neuron%x_input, pre_neuron//x_input]
 		filter_coords = [input_coords[0]-convo_coords[0], input_coords[1]-convo_coords[1]]
 
+		print("BEFORE FILTERD: {} DELAYS: {}".format(self.filter_d[filter_coords[0]][filter_coords[1]], delays[pre_neuron][post_neuron]))
+
 		# And we actualize delay/weight of the filter after the STDP
 		self.filter_d[filter_coords[0]][filter_coords[1]] = max(0.01, min(self.filter_d[filter_coords[0]][filter_coords[1]]+delta_d, self.max_delay))
-		self.filter_w[filter_coords[0]][filter_coords[1]] = max(0.05, min(self.filter_w[filter_coords[0]][filter_coords[1]]+delta_w, 1.0))
+		self.filter_w[filter_coords[0]][filter_coords[1]] = max(0.01, self.filter_w[filter_coords[0]][filter_coords[1]]+delta_w)
 
 		coord_conv = self.get_convolution_window(post_neuron)
 		diff = pre_neuron-coord_conv
 		for post in range(len(self.output)):
 			#print("PRE:{}, POST:{}".format( self.get_convolution_window(post)+diff, post))
 			delays[self.get_convolution_window(post)+diff][post] = min(self.max_delay, max(0.01, delays[self.get_convolution_window(post)+diff][post]+delta_d))
-			weights[self.get_convolution_window(post)+diff][post] = max(0.05, weights[self.get_convolution_window(post)+diff][post])
+			weights[self.get_convolution_window(post)+diff][post] = max(0.01, weights[self.get_convolution_window(post)+diff][post]+delta_w)
+
+		print("AFTER FILTERD: {} DELAYS: {}".format(self.filter_d[filter_coords[0]][filter_coords[1]], delays[pre_neuron][post_neuron]))
 
 	# Applies delta_d and delta_w to the whole filter 
 	def actualize_All_Filter(self, delta_d, delta_w, delays, weights):
@@ -684,12 +702,12 @@ class LearningMecanisms(object):
 		for x in range(len(self.filter_d)):
 			for y in range(len(self.filter_d[x])):
 				self.filter_d[x][y] = max(0.01, min(self.filter_d[x][y]+delta_d, self.max_delay))
-				self.filter_w[x][y] = max(0.05, min(self.filter_w[x][y]+delta_w, 1.0))
+				self.filter_w[x][y] = max(0.01, self.filter_w[x][y]+delta_w)
 
-		delays = np.where(np.logical_not(delays) & (delays < self.max_delay-delta_d) & (delays > 0.01), delays+delta_d, delays)
+		delays = np.where(np.logical_not(np.isnan(delays)) & (delays < self.max_delay-delta_d) & (delays > 0.01), delays+delta_d, delays)
 		#delays = np.where(delays > 0.01, delays, 0.015)
 
-		weights = np.where(np.logical_not(np.isnan(weights)) & (weights>0.05-delta_w), weights+delta_w, weights)
+		weights = np.where(np.logical_not(np.isnan(weights)) & (weights>0.01-delta_w), weights+delta_w, weights)
 
 		return delays.copy(), weights.copy()
 
@@ -714,15 +732,15 @@ class LearningMecanisms(object):
 
 
 growth_factor = 0.0001 # <- juste faire *duration dans STDP We increase each delay by this constant each step
-c = 0.3 # Stop Condition 1.0
+c = 0.5 # Stop Condition 1.0
 A_plus = float(options.STDPA)#0.05 # A is for weight STDP 0.05 is fine
 A_minus = float(options.STDPA)
 '''
 B_plus = 0.5 # B is for delay STDP 5.0 is fine
 B_minus = 0.5
 '''
-B_plus = 1.5 # B is for delay STDP 5.0 is fine
-B_minus = 1.5
+B_plus = float(options.STDPB) # B is for delay STDP 5.0 is fine
+B_minus = float(options.STDPB)
 teta_plus= 1.0 # tetas are for delay STDP
 teta_minus= 1.0
 tau_plus= 1.0 # tau are for weights STDP
