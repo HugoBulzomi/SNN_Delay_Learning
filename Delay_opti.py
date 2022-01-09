@@ -11,7 +11,8 @@ import time
 import json
 
 ### SIMULATOR CONFIGURATION ###
-'''
+
+#Good parameters for training on data without noise
 sim, options = get_simulator(("--plot-figure", "Plot the simulation results to a file", {"action": "store_true"}),
                              ("--STDP", "Run network using the STDP implemented in PyNN", {"action": "store_true"}),
                              ("--dendritic-delay-fraction", "What fraction of the total transmission delay is due to dendritic propagation", {"default": 1}),
@@ -19,8 +20,11 @@ sim, options = get_simulator(("--plot-figure", "Plot the simulation results to a
                              ("--Rtarget", "Target neural activation rate", {"default": 0.003}),
                              ("--lambdad", "Homeostasis application rate for delays", {"default": 0.0006}),
                              ("--lambdaw", "Homeostasis application rate for weights", {"default": 0.00003}),
-                             ("--STDPA", "STDP increment/decrement range for weights", {"default": 0.01}))
+                             ("--STDPA", "STDP increment/decrement range for weights", {"default": 0.01}),
+                             ("--STDPB", "STDP increment/decrement range for weights", {"default": 1.0}))
+
 '''
+#Good parameters for training on data with noise
 sim, options = get_simulator(("--plot-figure", "Plot the simulation results to a file", {"action": "store_true"}),
                              ("--STDP", "Run network using the STDP implemented in PyNN", {"action": "store_true"}),
                              ("--dendritic-delay-fraction", "What fraction of the total transmission delay is due to dendritic propagation", {"default": 1}),
@@ -28,9 +32,9 @@ sim, options = get_simulator(("--plot-figure", "Plot the simulation results to a
                              ("--Rtarget", "Target neural activation rate", {"default": 0.0025}),
                              ("--lambdad", "Homeostasis application rate for delays", {"default": 0.0001}),
                              ("--lambdaw", "Homeostasis application rate for weights", {"default": 0.00002}),
-                             ("--STDPA", "STDP increment/decrement range for weights", {"default": 0.03 }),
+                             ("--STDPA", "STDP increment/decrement range for weights", {"default": 0.01 }),
                              ("--STDPB", "STDP increment/decrement range for weights", {"default": 1.0}))
-
+'''
 if options.debug:
     init_logging(None, debug=True)
 
@@ -51,7 +55,7 @@ y_input = 13
 filter_x = 5
 filter_y = 5
 
-noise = True
+noise = False
 
 # Dataset Generation
 input_spiketrain = [[] for i in range(x_input*y_input)]
@@ -111,21 +115,21 @@ ev = input_spiketrain
 
 # populations
 Input = sim.Population(
-    x_input*y_input, # le nombre d'entrées 
-    sim.SpikeSourceArray(spike_times=ev), #on passe le data input ici
+    x_input*y_input, # Input size
+    sim.SpikeSourceArray(spike_times=ev), 
     label="Input"
 )
 Input.record("spikes") 
 
 Convolutions_parameters = {
-    'tau_m': 20.0,      # membrane time constant (in ms)   
+    'tau_m': 10.0,      # membrane time constant (in ms)   
     'tau_refrac': 10.0,  # duration of refractory period (in ms) 0.1 de base
     'v_reset': -70.0,   # reset potential after a spike (in mV) 
     'v_rest': -70.0,   # resting membrane potential (in mV)
     'v_thresh': -5.0,     # spike threshold (in mV) -5 de base
 }
 
-# The size of a convolution layer with a filter of size x*y is input_x-x+1 * input_y-y+1 
+# The size of a convolution layer, with a filter of size x*y, is equal to : input_x-x+1 * input_y-y+1 
 convolution1 = sim.Population(
   (x_input-filter_x+1)*(y_input-filter_y+1), 
   sim.IF_cond_exp(**Convolutions_parameters), 
@@ -151,7 +155,7 @@ convolution4.record(("spikes","v"))
 
 
 # filters
-weight_N = 0.2
+weight_N = 0.3
 delays_N = 15.0 
 weight_teta = 0.01
 delays_teta = 0.02 
@@ -195,7 +199,8 @@ for window_x in range(0, x_input - (filter_x-1)):
 
 input2convolution1 = sim.Projection(
     Input, convolution1,
-    connector=sim.FromListConnector(connections_proj1, column_names=["weight", "delay"]), 
+    #column_names allows us to pass the weights and delays directly with our connection matrix
+    connector=sim.FromListConnector(connections_proj1, column_names=["weight", "delay"]),
     synapse_type=syn_type,
     receptor_type="excitatory",
     label="Connection input layer to convolutional layer 1"
@@ -317,31 +322,30 @@ latheralInhibition4_3 = sim.Projection(
 
 # We will use this list to know wich convolution layer has reached its stop condition
 full_stop_condition= [False, False, False, False]
-# Each filter of each convolution layer will be put in this list and actualized at each stimulus
+
+# Each filter of each convolution layer will be copied in this list and actualized at each stimulus so that we can print them
 final_filters = [[], [], [], []]
-# Sometimes, even with latheral inhibition, two neurons on the same location in different convolution 
-# layer will both spike (due to the minimum delay on those connections). So we keep track of
-# wich neurons in each layer has already spiked this stimulus. (Everything is put back to False at the end of the stimulus)
+
+# In addition to latheral inhibition, we keep track of excatly wich neuron spiked during the last stimulus.
+# When a neuron spikes, we also check that no other neuron at the same position but in another layer spiked before applying STDP.
 neuron_activity_tag = [ [False for cell in range((x_input-filter_x+1)*(y_input-filter_y+1))]for conv in range(len(full_stop_condition)) ]
 
+# Recorded spikes of each neuron with it's time. This is only gathered at the end of each stimuls by the SpikeRecorder object.
 recorded_input_spikes = []
 recorded_outputs_spikes = np.array([[[] for cell in range((x_input-filter_x+1)*(y_input-filter_y+1))], [[] for cell in range((x_input-filter_x+1)*(y_input-filter_y+1))], [[] for cell in range((x_input-filter_x+1)*(y_input-filter_y+1))], [[] for cell in range((x_input-filter_x+1)*(y_input-filter_y+1))]])
 
-### Run simulation
-"""
-*************************************************************************************************
-From example "simple_STDP.py" on : http://neuralensemble.org/docs/PyNN/examples/simple_STDP.html
-"""
+
+
+
 
 class SimControl(object):
 	"""
 	Prints the step of the simulation and the filters at the end of each stimulus.
-	Also checks if the stop condition of the simulation is reached.
+	Also checks if the stop condition of the whole simulation is reached and saves the filters in a json.
 	"""
 
-	def __init__(self, sampling_interval, projection, print_time = False):
+	def __init__(self, sampling_interval, print_time = False):
 		self.interval = sampling_interval
-		self.projection = projection
 		self._weights = []
 		self._delays = []
 		self.print_time =print_time
@@ -462,9 +466,7 @@ class NeuronReset(object):
 
 class SpikeRecorder(object):
 	"""	
-	Resets neuron_activity_tag to False for all neurons in all layers.
-	Also injects a negative amplitude pulse to all neurons at the end of each stimulus
-	So that all membrane potentials are back to their resting values.
+	Records the time of spike of each neuron.
 	"""
 
 	def __init__(self, sampling_interval, input_pop, output_pops):
@@ -491,13 +493,22 @@ class SpikeRecorder(object):
 
 
 class LearningMecanisms(object):
-	def __init__(self, sampling_interval, proj, input_pop, output_pop, B_plus, B_minus, tau_plus, tau_minus, filter_d, A_plus, A_minus, teta_plus, teta_minus, filter_w, stop_condition, growth_factor, Rtarget=0.0002, lamdad=0.001, lamdaw=0.0001, thresh_adapt=False, label=0):  #Last good iteration: Rtarget=0.002, lamdad=0.001, lamdaw=0.0000, thresh_adapt=False
+	"""
+	Applies all learning mecanims:
+		- STDP on weights and Delays
+		- Homeostasis
+		- Threshold adaptation (not working)
+		- checking for learning stop condition
+	"""
+
+
+	def __init__(self, sampling_interval, proj, input_pop, output_pop, B_plus, B_minus, tau_plus, tau_minus, filter_d, A_plus, A_minus, teta_plus, teta_minus, filter_w, stop_condition, growth_factor, Rtarget=0.0002, lamdad=0.001, lamdaw=0.0001, thresh_adapt=False, label=0):
 		self.interval = sampling_interval
 		self.projection = proj
 		self.input = input_pop
 		self.output = output_pop
-		self.input_last_spiking_times = [-1 for n in range(len(self.input))] # For ech neuron we keep its last time of spike
-		self.output_last_spiking_times = [-1 for n in range(len(self.output))]
+		#self.input_last_spiking_times = [-1 for n in range(len(self.input))] # For aech neuron we keep its last time of spike
+		#self.output_last_spiking_times = [-1 for n in range(len(self.output))]
 		self.B_plus = B_plus
 		self.B_minus = B_minus
 		self.tau_plus = tau_plus
@@ -511,16 +522,14 @@ class LearningMecanisms(object):
 		self.teta_minus = teta_minus
 		self.c = stop_condition
 		self.growth_factor = growth_factor
-		self.label = label
-		self.thresh_adapt=thresh_adapt
+		self.label = label # Just the int associated with the layer theses mecanisms are applied to (0-3)
+		self.thresh_adapt=thresh_adapt # Should be set to False (threshold adaptation not working)
 		self.total_spike_count_per_neuron = [np.array([Rtarget for s in range(10)]) for cell in range(len(self.output))] # For each neuron, we count their number of spikes to compute their activation rate.
-		self.call_count = 0 # Number of times this has been called.
 		self.Rtarget = Rtarget
 		self.lamdaw = lamdaw 
 		self.lamdad = lamdad
 
 	def __call__(self, t):
-		self.call_count += 1
 		final_filters[self.label] = [self.filter_d, self.filter_w]
 
 
@@ -547,11 +556,12 @@ class LearningMecanisms(object):
 
 		for post_neuron in range(len(output_spike_train)):
 
+			# We only keep track of the activations of each neuron on a timeframe of 10 stimuli
 			self.total_spike_count_per_neuron[post_neuron][int((t//interval)%len(self.total_spike_count_per_neuron[post_neuron]))] = 0
 
+			# If the neuron spiked...
 			if len(output_spike_train[post_neuron]) > 0 and self.check_activity_tags(post_neuron):
 				neuron_activity_tag[self.label][post_neuron] = True
-				#print("***** STIMULUS {} *****".format(t//interval))
 
 				self.total_spike_count_per_neuron[post_neuron][int((t//interval)%len(self.total_spike_count_per_neuron[post_neuron]))] += 1
 
@@ -567,7 +577,7 @@ class LearningMecanisms(object):
 
 				if not self.stop_condition(delays, post_neuron):
 					# We actualize the last time of spike for this neuron
-					self.output_last_spiking_times[post_neuron] = output_spike_train[post_neuron][-1]
+					#self.output_last_spiking_times[post_neuron] = output_spike_train[post_neuron][-1]
 
 					# We now compute a new delay for each of its connections using STDP
 					for pre_neuron in range(len(delays)):
@@ -591,7 +601,6 @@ class LearningMecanisms(object):
 
 			else:
 				# The neuron did not spike and its threshold should be lowered
-
 				if self.thresh_adapt:
 					thresh = current_rest = self.output.__getitem__(post_neuron).get_parameters()['v_thresh']
 					current_rest = self.output.__getitem__(post_neuron).get_parameters()['v_rest']
@@ -604,6 +613,8 @@ class LearningMecanisms(object):
 			#print("convo {} R: {}".format( self.label, Robserved))
 			delta_d = -self.lamdad*K
 			delta_w = self.lamdaw*K
+			# Since weights and delays are shared, we can just add the homestatis deltas of all neurons add apply
+			# the homeostasis only once after it has been computed for each neuron.
 			homeo_delays_total += delta_d  
 			homeo_weights_total += delta_w 
 
@@ -668,7 +679,8 @@ class LearningMecanisms(object):
 			weights[self.get_convolution_window(post)+diff][post] = max(0.01, weights[self.get_convolution_window(post)+diff][post]+delta_w)
 
 
-	# Applies delta_d and delta_w to the whole filter
+	# Applies delta_d and delta_w to the whole filter 
+	# /!\ this method actually returns the new delays and weights
 	def actualize_All_Filter(self, delta_d, delta_w, delays, weights):
 
 		self.filter_d = np.where((self.filter_d+delta_d < self.max_delay) & (self.filter_d > 0.01), self.filter_d+delta_d, self.filter_d)
@@ -680,7 +692,7 @@ class LearningMecanisms(object):
 
 		return delays.copy(), weights.copy()
 
-
+	# Given
 	def get_convolution_window(self, post_neuron):
 		return post_neuron//(x_input-filter_x+1)*x_input + post_neuron%(x_input-filter_x+1)
 
@@ -740,7 +752,7 @@ neuron_reset = NeuronReset(sampling_interval=interval-5, pops=[convolution1, con
 Recorder = SpikeRecorder(sampling_interval=interval-1, input_pop = Input, output_pops = [convolution1, convolution2, convolution3, convolution4])
 #Test = TestClass(sampling_interval=1.0, pop=convolution1)
 
-SimControl1 = SimControl(sampling_interval=1.0, projection=input2convolution1, print_time=True)
+SimControl1 = SimControl(sampling_interval=1.0, print_time=True)
 
 Learn1 = LearningMecanisms(sampling_interval=STDP_sampling, proj=input2convolution1, input_pop=Input, output_pop=convolution1, B_plus=B_plus, B_minus=B_minus, tau_plus=tau_plus, tau_minus=tau_minus, filter_d=filter1_d, A_plus=A_plus, A_minus=A_minus, teta_plus=teta_plus, teta_minus=teta_minus, filter_w=filter1_w , stop_condition=c, growth_factor=growth_factor, label=0, Rtarget=Rtarget, lamdad=lambdad, lamdaw=lambdaw)
 Learn2 = LearningMecanisms(sampling_interval=STDP_sampling, proj=input2convolution2, input_pop=Input, output_pop=convolution2, B_plus=B_plus, B_minus=B_minus, tau_plus=tau_plus, tau_minus=tau_minus, filter_d=filter2_d, A_plus=A_plus, A_minus=A_minus, teta_plus=teta_plus, teta_minus=teta_minus, filter_w=filter2_w, stop_condition=c, growth_factor=growth_factor, label=1, Rtarget=Rtarget, lamdad=lambdad, lamdaw=lambdaw)
