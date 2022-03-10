@@ -21,7 +21,7 @@ sim, options = get_simulator(("--plot-figure", "Plot the simulation results to a
                              ("--lambdad", "Homeostasis application rate for delays", {"default": 0.0006}),
                              ("--lambdaw", "Homeostasis application rate for weights", {"default": 0.00003}),
                              ("--STDPA", "STDP increment/decrement range for weights", {"default": 0.01}),
-                             ("--STDPB", "STDP increment/decrement range for weights", {"default": 1.0}))
+                             ("--STDPB", "STDP increment/decrement range for delays", {"default": 1.0}))
 
 '''
 #Good parameters for training on data with noise
@@ -155,7 +155,7 @@ convolution4.record(("spikes","v"))
 
 
 # filters
-weight_N = 0.3
+weight_N = 0.5
 delays_N = 15.0 
 weight_teta = 0.01
 delays_teta = 0.02 
@@ -686,9 +686,9 @@ class LearningMecanisms(object):
 		self.filter_d = np.where((self.filter_d+delta_d < self.max_delay) & (self.filter_d > 0.01), self.filter_d+delta_d, self.filter_d)
 		self.filter_w = np.where( self.filter_w + delta_w > 0.01, self.filter_w+delta_w, self.filter_w)
 
-		delays = np.where(np.logical_not(np.isnan(delays)) & (delays + delta_d < self.max_delay) & (delays > 0.01), delays+delta_d, delays)
+		delays = np.where(np.logical_not(np.isnan(delays)) & (delays + delta_d < self.max_delay) & (delays + delta_d > 0.01), delays+delta_d, np.maximum(0.01, np.minimum(self.max_delay, delays+delta_d)))
 
-		weights = np.where(np.logical_not(np.isnan(weights)) & (weights + delta_w>0.01), weights+delta_w, weights)
+		weights = np.where(np.logical_not(np.isnan(weights)) & (weights + delta_w>0.01), weights+delta_w, np.maximum(0.01, self.max_delay, weights + delta_w))
 
 		return delays.copy(), weights.copy()
 
@@ -767,11 +767,7 @@ Learn4 = LearningMecanisms(sampling_interval=STDP_sampling, proj=input2convoluti
 sim.run(time_data, callbacks=[SimControl1, Learn1, Learn2, Learn3, Learn4, neuron_reset, Recorder])
 sim.end()
 '''
-
 ### Simulation results
-
-
-
 #Input_data = Input.get_data().segments[0]
 Input_data = neuron_reset.get_pop_spike_times()
 Output_data = convolution1.get_data().segments[0]
@@ -787,9 +783,7 @@ delays2 = weight_recorder2.get_delays()
 delays3 = weight_recorder3.get_delays()
 delays4 = weight_recorder4.get_delays()
 print(Output_data)
-
 filename = normalized_filename("Results", "Saliency detection", "pkl", options.simulator)
-
 if options.plot_figure:
     figure_filename = filename.replace("pkl", "png")
     Figure(
@@ -815,7 +809,6 @@ if options.plot_figure:
                 legend=False, xlim=(0, time_data)),
         Panel(weights4, xticks=True, yticks=True, xlabel="Time (ms)", ylabel="Weights input2convolution4",
                 legend=False, xlim=(0, time_data)),
-
         # evolution of the synaptic delays with time
         Panel(delays1, xticks=True, yticks=True, xlabel="Time (ms)", ylabel="Delays input2convolution1",
                 legend=False, xlim=(0, time_data)),
@@ -828,8 +821,5 @@ if options.plot_figure:
         title="Simple 2 layers spiking neural network",
         annotations="Simulated with %s" % options.simulator.upper()
     ).save(figure_filename)
-
-
 sim.end()
 '''
-
